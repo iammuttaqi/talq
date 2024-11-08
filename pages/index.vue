@@ -84,28 +84,22 @@ const leaveRoom = async () => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-800 text-white">
     <div v-if="!isInRoom" class="flex flex-col items-center">
       <h1 class="text-2xl font-bold mb-4">Join Agora Voice Chat</h1>
-      <button @click="enterRoom" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
-        Enter Room
-      </button>
+      <UButton @click="enterRoom">Enter Room</UButton>
     </div>
 
     <div v-else class="w-full max-w-lg">
-      <div class="flex justify-between items-center p-4 bg-gray-800 rounded-t-lg">
+      <div class="flex justify-between items-center p-4 bg-gray-700 rounded-t-lg">
         <h2 class="text-lg font-semibold">Room: {{ roomId }}</h2>
-        <div class="flex items-center space-x-4">
-          <button @click="toggleMic">
-            <Icon :name="micMuted ? 'i-ph-microphone-slash' : 'i-ph-microphone'" class="text-xl" size="24" />
-          </button>
-          <button @click="leaveRoom">
-            <Icon name="i-ph-sign-out-bold" class="text-xl text-red-500" size="24" />
-          </button>
+        <div class="flex items-center">
+          <UButton @click="toggleMic" variant="link" :icon="micMuted ? 'i-ph-microphone-slash' : 'i-ph-microphone'" />
+          <UButton @click="leaveRoom" variant="link" icon="i-ph-sign-out-bold" color="red" />
         </div>
       </div>
 
-      <div id="members" class="p-4 bg-gray-700 rounded-b-lg">
+      <div class="p-4 bg-gray-600 rounded-b-lg space-y-4">
         <div v-for="member in members" :key="member.uid" :class="[
           'flex items-center justify-between p-2 rounded-lg',
           member.isLocal ? 'bg-blue-600' : 'bg-gray-600',
