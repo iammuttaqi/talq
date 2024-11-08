@@ -1,42 +1,36 @@
-<script setup lang="ts">
+<script setup>
 import AgoraRTC from 'agora-rtc-sdk-ng';
 
-// Agora App ID
-const appid = '98d1d7d1ae4941e98c9edc6e721490b8';
+const appId = '98d1d7d1ae4941e98c9edc6e721490b8';
 const token = null;
 const rtcUid = Math.floor(Math.random() * 2032);
 const roomId = 'main';
 
-// Client and tracks
 const rtcClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-const localAudioTrack = ref(null);
-const remoteAudioTracks = ref({});
+
+const micMuted = ref(true);
+const audioTracks = ref({
+  localAudioTrack: null,
+  remoteAudioTracks: {},
+});
+
 const members = ref([]);
-const micMuted = ref(false);
 const isInRoom = ref(false);
 
-// Initialize RTC
 const initRtc = async () => {
-  // Join the room
-  await rtcClient.join(appid, roomId, token, rtcUid);
-
-  // Create and publish local audio track
-  localAudioTrack.value = await AgoraRTC.createMicrophoneAudioTrack();
-  await rtcClient.publish(localAudioTrack.value);
-
-  // Add local user to the members list
-  members.value.push({ uid: rtcUid, volumeLevel: 0 });
-
-  // Enable volume indicator
-  initVolumeIndicator();
-
-  // Event listeners
   rtcClient.on('user-joined', handleUserJoined);
   rtcClient.on('user-published', handleUserPublished);
   rtcClient.on('user-left', handleUserLeft);
+
+  await rtcClient.join(appId, roomId, token, rtcUid);
+  audioTracks.value.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+  audioTracks.value.localAudioTrack.setMuted(micMuted.value);
+  await rtcClient.publish(audioTracks.value.localAudioTrack);
+
+  members.value.push({ uid: rtcUid, isLocal: true });
+  initVolumeIndicator();
 };
 
-// Volume Indicator
 const initVolumeIndicator = () => {
   AgoraRTC.setParameter('AUDIO_VOLUME_INDICATION_INTERVAL', 200);
   rtcClient.enableAudioVolumeIndicator();
@@ -45,96 +39,81 @@ const initVolumeIndicator = () => {
     volumes.forEach((volume) => {
       const member = members.value.find((m) => m.uid === volume.uid);
       if (member) {
-        member.volumeLevel = volume.level;
+        member.isTalking = volume.level >= 50;
       }
     });
   });
 };
 
-// Handle user joining
 const handleUserJoined = (user) => {
-  members.value.push({ uid: user.uid, volumeLevel: 0 });
+  members.value.push({ uid: user.uid, isLocal: false });
 };
 
-// Handle user publishing
 const handleUserPublished = async (user, mediaType) => {
   await rtcClient.subscribe(user, mediaType);
-
   if (mediaType === 'audio') {
-    remoteAudioTracks.value[user.uid] = user.audioTrack;
+    audioTracks.value.remoteAudioTracks[user.uid] = user.audioTrack;
     user.audioTrack.play();
   }
 };
 
-// Handle user leaving
 const handleUserLeft = (user) => {
   members.value = members.value.filter((member) => member.uid !== user.uid);
-  delete remoteAudioTracks.value[user.uid];
+  delete audioTracks.value.remoteAudioTracks[user.uid];
 };
 
-// Enter room
+const toggleMic = async () => {
+  micMuted.value = !micMuted.value;
+  await audioTracks.value.localAudioTrack.setMuted(micMuted.value);
+};
+
 const enterRoom = async () => {
   await initRtc();
   isInRoom.value = true;
 };
 
-// Leave room
 const leaveRoom = async () => {
-  if (localAudioTrack.value) {
-    localAudioTrack.value.stop();
-    localAudioTrack.value.close();
-  }
+  audioTracks.value.localAudioTrack.stop();
+  audioTracks.value.localAudioTrack.close();
   await rtcClient.unpublish();
   await rtcClient.leave();
 
-  isInRoom.value = false;
   members.value = [];
+  isInRoom.value = false;
 };
-
-// Toggle microphone
-const toggleMic = () => {
-  if (localAudioTrack.value) {
-    micMuted.value = !micMuted.value;
-    localAudioTrack.value.setEnabled(!micMuted.value);
-  }
-};
-
-// Cleanup on unmount
-onBeforeUnmount(() => {
-  rtcClient.off('user-joined', handleUserJoined);
-  rtcClient.off('user-published', handleUserPublished);
-  rtcClient.off('user-left', handleUserLeft);
-});
 </script>
 
 <template>
-  <div id="container" class="flex flex-col items-center justify-center min-h-screen p-4">
-    <!-- Room Header (Visible when in room) -->
-    <div v-show="isInRoom" id="room-header" class="flex w-full max-w-md justify-between items-center mb-4">
-      <h1 id="room-name" class="text-lg font-semibold">{{ roomId }}</h1>
-
-      <div id="room-header-controls" class="flex">
-        <!-- Mic Toggle Icon -->
-        <UButton @click="toggleMic" class="text-gray-700 hover:text-red-500" variant="link">
-          <Icon :name="micMuted ? 'i-ph-microphone-slash' : 'i-ph-microphone'" size="24" />
-        </UButton>
-        <!-- Leave Room Icon -->
-        <UButton @click="leaveRoom" class="text-gray-700 hover:text-red-500" variant="link">
-          <Icon name="i-ph-sign-out-bold" size="24" />
-        </UButton>
-      </div>
+  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+    <div v-if="!isInRoom" class="flex flex-col items-center">
+      <h1 class="text-2xl font-bold mb-4">Join Agora Voice Chat</h1>
+      <button @click="enterRoom" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">
+        Enter Room
+      </button>
     </div>
 
-    <!-- Form to Enter the Room (Visible when not in room) -->
-    <form v-show="!isInRoom" id="form" @submit.prevent="enterRoom" class="flex flex-col items-center">
-      <UButton type="submit">Enter Room</UButton>
-    </form>
+    <div v-else class="w-full max-w-lg">
+      <div class="flex justify-between items-center p-4 bg-gray-800 rounded-t-lg">
+        <h2 class="text-lg font-semibold">Room: {{ roomId }}</h2>
+        <div class="flex items-center space-x-4">
+          <button @click="toggleMic">
+            <Icon :name="micMuted ? 'i-ph-microphone-slash' : 'i-ph-microphone'" class="text-xl" size="24" />
+          </button>
+          <button @click="leaveRoom">
+            <Icon name="i-ph-sign-out-bold" class="text-xl text-red-500" size="24" />
+          </button>
+        </div>
+      </div>
 
-    <!-- Members List -->
-    <div id="members" class="flex flex-col w-full max-w-md gap-2 mt-4">
-      <div v-for="member in members" :key="member.uid"
-        :class="['speaker', `user-rtc-${member.uid}`, 'border-2 rounded-lg p-2 text-center shadow-sm', member.volumeLevel >= 50 ? 'border-primary' : '']">
-        <p class="text-gray-700 font-medium">{{ member.uid }}</p>
+      <div id="members" class="p-4 bg-gray-700 rounded-b-lg">
+        <div v-for="member in members" :key="member.uid" :class="[
+          'flex items-center justify-between p-2 rounded-lg',
+          member.isLocal ? 'bg-blue-600' : 'bg-gray-600',
+          member.isTalking ? 'border-2 border-green-500' : 'border-2 border-transparent'
+        ]">
+          <span>User: {{ member.uid }}</span>
+          <span v-if="member.isLocal">(You)</span>
+        </div>
       </div>
     </div>
   </div>
